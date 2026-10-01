@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#bfe6ff">
+<title>Alex's Farm</title>
+<style>
+  :root {
+    --sky-top: #e9f7ff;
+    --sky: #bfe6ff;
+    --grass: #9bd873;
+    --grass-dark: #74bd52;
+    --sun: #ffd96a;
+    --ink: #6b4a32;
+    --btn: #ff8a5c;
+    --btn-dark: #e56a3d;
+    /* Where the sky meets the grass. Hiding spots stay below it; the sky above is the flight lane. */
+    --horizon: max(30vh, 140px);
+    --font:ui-rounded, "Arial Rounded MT Bold", "Comic Sans MS", "Chalkboard SE", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: var(--font);
+    background: linear-gradient(var(--sky-top), var(--sky) var(--horizon), var(--grass) var(--horizon), var(--grass-dark));
+  }
+
+  /* Sun */
+  body::before {
+    content: "";
+    position: fixed;
+    top: -6vmin;
+    left: -6vmin;
+    width: 26vmin;
+    height: 26vmin;
+    border-radius: 50%;
+    background: var(--sun);
+    box-shadow: 0 0 0 3vmin rgba(255, 217, 106, .35);
+  }
+
+  .screen { position: fixed; inset: 0; }
+  .hidden { display: none !important; }
+
+  button {
+    font: inherit;
+    border: 0;
+    background: none;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  /* ---------- Start screen ---------- */
+  #start {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4vmin;
+    padding: 16px;
+  }
+
+  #start h1 {
+    margin: 0;
+    font-size: clamp(48px, 13vw, 130px);
+    line-height: 1;
+    text-align: center;
+    color: #fff;
+    letter-spacing: .02em;
+    text-shadow:
+      0 .06em 0 var(--ink),
+      .04em .04em 0 var(--ink),
+      -.04em .04em 0 var(--ink),
+      0 .12em .2em rgba(0, 0, 0, .2);
+  }
+
+  .parade {
+    display: flex;
+    gap: 2vmin;
+    font-size: clamp(36px, 9vmin, 80px);
+  }
+  .parade span {
+    display: inline-block;
+    animation: bob 1.6s ease-in-out infinite;
+  }
+  .parade span:nth-child(2) { animation-delay: .15s; }
+  .parade span:nth-child(3) { animation-delay: .3s; }
+  .parade span:nth-child(4) { animation-delay: .45s; }
+  .parade span:nth-child(5) { animation-delay: .6s; }
+  .parade span:nth-child(6) { animation-delay: .75s; }
+
+  #play {
+    width: clamp(140px, 32vmin, 240px);
+    height: clamp(140px, 32vmin, 240px);
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--btn);
+    box-shadow: 0 1.2vmin 0 var(--btn-dark), 0 2vmin 3vmin rgba(0, 0, 0, .2);
+    display: grid;
+    place-items: center;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  #play::after {
+    content: "";
+    margin-left: 12%;
+    border-style: solid;
+    border-color: transparent transparent transparent #fff;
+    border-width: 2.2em 0 2.2em 3.6em;
+    font-size: clamp(14px, 3.4vmin, 26px);
+  }
+  #play:active { transform: translateY(1vmin); box-shadow: 0 .2vmin 0 var(--btn-dark); }
+
+  /* ---------- Game ---------- */
+  #scene {
+    position: absolute;
+    /* The scene starts at the horizon, so every hiding spot sits on the grass */
+    inset: calc(var(--horizon) + 1vh) 4vw 4vh;
+  }
+
+  /* Position and size are set in JS (layoutSpots) */
+  .spot {
+    position: absolute;
+    opacity: 0;
+    animation: appear .5s ease-out forwards;
+    animation-delay: var(--d);
+  }
+
+  .spot .animal,
+  .spot .cover {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .spot .cover {
+    z-index: 2;
+    font-size: 1.3em;
+    transform: translate(-50%, -45%);
+    transition: transform .5s cubic-bezier(.3, 1.5, .5, 1), opacity .4s;
+    animation: sway 3.2s ease-in-out infinite;
+    animation-delay: var(--d);
+  }
+
+  /* Peeking out from behind the cover */
+  .spot .animal {
+    z-index: 1;
+    transform: translate(-50%, -105%) scale(.5);
+    transition: transform .55s cubic-bezier(.34, 1.8, .5, 1);
+    animation: peek 4s ease-in-out infinite;
+    animation-delay: calc(var(--d) * 4);
+  }
+
+  .spot.found .cover {
+    transform: translate(-5%, -10%) scale(.55);
+    opacity: .6;
+  }
+  .spot.found .animal {
+    z-index: 3;
+    transform: translate(-50%, -55%) scale(1.15);
+    animation: none;
+  }
+  .spot.wiggle .animal { animation: wiggle .5s ease-in-out; }
+  /* During the victory train the animals leave the field to ride it */
+  #scene.boarded .spot .animal { opacity: 0; transition: opacity .4s; }
+
+  /* Sky flyers (airplane, helicopter): position is driven from JS (launchFlyer) */
+  .flyer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 110px;
+    height: 110px;
+    display: grid;
+    place-items: center;
+    font-size: clamp(56px, 10vmin, 90px);
+    z-index: 5;
+    will-change: transform;
+  }
+  .flyer .flyer-flip {
+    display: inline-block;
+    animation: drift 1.4s ease-in-out infinite;
+  }
+  .flyer.helicopter .flyer-flip { animation-duration: .8s; }
+  .flyer .flyer-body {
+    display: inline-block;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  /* Parent-only button: hold for 3 seconds to go back to the start screen */
+  #parent {
+    position: fixed;
+    top: max(8px, env(safe-area-inset-top));
+    right: max(8px, env(safe-area-inset-right));
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .35);
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+    z-index: 20;
+    opacity: .7;
+    transition: background .2s, transform .2s;
+  }
+  #parent.holding {
+    background: rgba(255, 138, 92, .95);
+    transform: scale(1.35);
+    transition: background 3s linear, transform 3s linear;
+  }
+
+  /* ---------- Victory train ---------- */
+  #train {
+    position: fixed;
+    left: 0;
+    bottom: 3vh;
+    display: flex;
+    align-items: flex-end;
+    font-size: clamp(48px, 12vmin, 110px);
+    white-space: nowrap;
+    z-index: 8;
+    pointer-events: none;
+    will-change: transform;
+  }
+  #train .car {
+    position: relative;
+    display: inline-block;
+    line-height: 1;
+  }
+  #train .engine { animation: chug .3s ease-in-out infinite; }
+  #train .rider {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    font-size: .6em;
+    translate: -50% 0;
+    animation: bob .5s ease-in-out infinite;
+  }
+  #train .car:nth-child(even) .rider { animation-delay: .25s; }
+
+  #track {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(3vh - 8px);
+    height: 12px;
+    background:
+      linear-gradient(#6b4a32, #6b4a32) top / 100% 3px no-repeat,
+      repeating-linear-gradient(90deg, #8b5a3c 0 8px, transparent 8px 26px);
+    z-index: 7;
+    opacity: 0;
+    transition: opacity .4s;
+    pointer-events: none;
+  }
+  #track.show { opacity: 1; }
+
+  /* ---------- Confetti ---------- */
+  #confetti { position: fixed; inset: 0; pointer-events: none; z-index: 10; overflow: hidden; }
+  .bit {
+    position: absolute;
+    top: -5vh;
+    width: 2vmin;
+    height: 3vmin;
+    min-width: 8px;
+    min-height: 12px;
+    border-radius: 2px;
+    animation: fall linear forwards;
+  }
+
+  /* ---------- Animations ---------- */
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-18%); } }
+  @keyframes pulse { 0%, 100% { scale: 1; } 50% { scale: 1.07; } }
+  @keyframes appear { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+  @keyframes sway { 0%, 100% { rotate: -3deg; } 50% { rotate: 3deg; } }
+  @keyframes peek { 0%, 80%, 100% { rotate: 0deg; } 85% { rotate: -14deg; } 92% { rotate: 14deg; } }
+  @keyframes chug { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4%; } }
+  @keyframes drift { 0%, 100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+  @keyframes wiggle { 0%, 100% { rotate: 0deg; } 25% { rotate: -15deg; } 75% { rotate: 15deg; } }
+  @keyframes fall {
+    to { transform: translate(var(--dx), 112vh) rotate(var(--r)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .parade span, #play, .spot .cover, .spot .animal { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="start" class="screen">
+  <div class="parade" aria-hidden="true"><span>🐄</span><span>🐷</span><span>🐑</span><span>🦆</span><span>🐴</span><span>🐔</span></div>
+  <h1>Alex’s Farm</h1>
+  <button id="play" aria-label="Play"></button>
+</div>
+
+<div id="game" class="screen hidden">
+  <div id="scene"></div>
+  <button id="parent" aria-label="Hold for 3 seconds to go back">🏠</button>
+</div>
+
+<div id="track"></div>
+<div id="train" class="hidden" aria-hidden="true"></div>
+<div id="confetti"></div>
+
+<script>
+  const ANIMALS = [
+    { emoji: '🐄', name: 'Cow',     sound: 'Moo!' },
+    { emoji: '🐷', name: 'Pig',     sound: 'Oink oink!' },
+    { emoji: '🐑', name: 'Sheep',   sound: 'Baa!' },
+    { emoji: '🦆', name: 'Duck',    sound: 'Quack quack!' },
+    { emoji: '🐴', name: 'Horse',   sound: 'Neigh!' },
+    { emoji: '🐔', name: 'Chicken', sound: 'Cluck cluck!' },
+  ];
+  const COVERS = ['🌳', '🌾', '🏡', '🌻', '🚜', '🌲'];
+  const CONFETTI_COLORS = ['#ff8a5c', '#ffd96a', '#7ed0ff', '#9bd873', '#ff9ad5', '#b79cff'];
+  const TAP_COOLDOWN_MS = 700;
+  const MIN_SPOT = 100; // smallest tap target, in px
+  const MAX_SPOT = 200;
+  const PARENT_HOLD_MS = 3000;
+  const TRAIN_MS = 6500;                // time for the victory train to cross
+  const FLYER_FIRST_MS = 3000;         // first flight after pressing play
+  const FLYER_GAP_MS = [6000, 12000];   // random wait between flights
+
+  const startScreen = document.getElementById('start');
+  const gameScreen = document.getElementById('game');
+  const scene = document.getElementById('scene');
+  const confetti = document.getElementById('confetti');
+  const train = document.getElementById('train');
+  const track = document.getElementById('track');
+  const parentBtn = document.getElementById('parent');
+
+  let foundCount = 0;
+  let foundOrder = [];    // animals in the order they were found (they ride the train)
+  let trainAnim = null;
+  let celebrating = false;
+  let roundTimer = null;
+
+  // ---------- Sound effects (generated, no audio files) ----------
+  let audioCtx = null;
+
+  function initAudio() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!audioCtx && AC) audioCtx = new AC();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function tone(freq, startIn, duration, endFreq = freq, volume = 0.18) {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime + startIn;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, t + duration);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(volume, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + duration + 0.05);
+  }
+
+  function playPop() {
+    tone(300, 0, 0.14, 900);
+  }
+
+  function playWhoosh() {
+    tone(220, 0, 0.6, 660, 0.12);
+    tone(330, 0.05, 0.6, 990, 0.08);
+  }
+
+  function playChop() {
+    for (let i = 0; i < 8; i++) tone(120, i * 0.08, 0.06, 80, 0.2);
+  }
+
+  function playChooChoo() {
+    // Whistle, then chugging
+    tone(880, 0, 0.6, 880, 0.08);
+    tone(1108, 0, 0.6, 1108, 0.06);
+    for (let i = 0; i < 8; i++) tone(320, 0.7 + i * 0.3, 0.15, 180, 0.12);
+  }
+
+  function playChime() {
+    [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.13, 0.5));
+  }
+
+  // ---------- Voice (browser text-to-speech) ----------
+  let voice = null;
+
+  function pickVoice() {
+    if (!('speechSynthesis' in window)) return;
+    const voices = speechSynthesis.getVoices();
+    voice =
+      voices.find(v => /^en[-_]US/i.test(v.lang) && /samantha|zira|aria|jenny|google us/i.test(v.name)) ||
+      voices.find(v => /^en[-_]US/i.test(v.lang)) ||
+      voices.find(v => /^en/i.test(v.lang)) ||
+      null;
+  }
+
+  if ('speechSynthesis' in window) {
+    pickVoice();
+    speechSynthesis.onvoiceschanged = pickVoice;
+  }
+
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    u.pitch = 1.2;
+    if (voice) u.voice = voice;
+    speechSynthesis.speak(u);
+  }
+
+  // ---------- Game ----------
+  function shuffle(list) {
+    const a = [...list];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function newRound() {
+    foundCount = 0;
+    foundOrder = [];
+    celebrating = false;
+    scene.classList.remove('boarded');
+    scene.innerHTML = '';
+    const animals = shuffle(ANIMALS);
+    const covers = shuffle(COVERS);
+
+    animals.forEach((animal, i) => {
+      const spot = document.createElement('button');
+      spot.className = 'spot';
+      spot.style.setProperty('--d', `${i * 0.1}s`);
+      spot.setAttribute('aria-label', 'Hiding spot');
+      spot.innerHTML = `<span class="animal">${animal.emoji}</span><span class="cover">${covers[i]}</span>`;
+      spot.addEventListener('pointerdown', e => onSpotTap(e, spot, animal));
+      scene.append(spot);
+    });
+
+    layoutSpots();
+  }
+
+  // ---------- Random placement ----------
+  // Scatter the spots at random spots in the scene without overlapping.
+  // If they won't fit, shrink them a little and try again; as a last resort,
+  // drop them into shuffled grid cells.
+  function layoutSpots() {
+    const spots = [...scene.children];
+    if (!spots.length) return;
+    const { width: w, height: h } = scene.getBoundingClientRect();
+
+    let size = Math.min(MAX_SPOT, Math.min(w, h) / 2.4, Math.sqrt((w * h) / spots.length) * 0.6);
+    size = Math.max(MIN_SPOT, size);
+
+    let positions = scatter(spots.length, w, h, size);
+    while (!positions && size > MIN_SPOT) {
+      size = Math.max(MIN_SPOT, size * 0.92);
+      positions = scatter(spots.length, w, h, size);
+    }
+    if (!positions) ({ positions, size } = gridPlace(spots.length, w, h));
+
+    spots.forEach((spot, i) => {
+      spot.style.left = `${positions[i].x}px`;
+      spot.style.top = `${positions[i].y}px`;
+      spot.style.width = `${size}px`;
+      spot.style.height = `${size}px`;
+      spot.style.fontSize = `${size * 0.55}px`;
+    });
+  }
+
+  function scatter(count, w, h, size) {
+    const minGap = size * 1.1;
+    const points = [];
+    for (let attempt = 0; attempt < 2000 && points.length < count; attempt++) {
+      const p = {
+        x: Math.random() * Math.max(0, w - size),
+        y: Math.random() * Math.max(0, h - size),
+      };
+      // Square tap areas must not overlap, so they need to be apart on at least one axis
+      if (points.every(q => Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y)) >= minGap)) points.push(p);
+    }
+    return points.length === count ? points : null;
+  }
+
+  function gridPlace(count, w, h) {
+    const cols = Math.ceil(Math.sqrt((count * w) / h));
+    const rows = Math.ceil(count / cols);
+    const cw = w / cols;
+    const ch = h / rows;
+    const size = Math.min(cw, ch) * 0.9;
+    const cells = shuffle([...Array(cols * rows).keys()]).slice(0, count);
+    const positions = cells.map(c => ({
+      x: (c % cols) * cw + (cw - size) / 2,
+      y: Math.floor(c / cols) * ch + (ch - size) / 2,
+    }));
+    return { positions, size };
+  }
+
+  // Re-scatter when the screen rotates or resizes
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (!gameScreen.classList.contains('hidden')) layoutSpots();
+    }, 200);
+  });
+
+  function onSpotTap(e, spot, animal) {
+    e.preventDefault();
+    // Ignore second fingers and palm presses
+    if (!e.isPrimary || celebrating) return;
+
+    const now = performance.now();
+    if (now - (spot.lastTap || 0) < TAP_COOLDOWN_MS) return;
+    spot.lastTap = now;
+
+    const line = `${animal.name}! ${animal.sound}`;
+
+    if (!spot.classList.contains('found')) {
+      spot.classList.add('found');
+      spot.setAttribute('aria-label', animal.name);
+      foundCount++;
+      foundOrder.push(animal);
+      playPop();
+      speak(line);
+      if (foundCount === ANIMALS.length) {
+        celebrating = true;
+        roundTimer = setTimeout(celebrate, 1800);
+      }
+    } else {
+      // Already found: wiggle and say it again
+      spot.classList.remove('wiggle');
+      void spot.offsetWidth; // restart the animation
+      spot.classList.add('wiggle');
+      speak(line);
+    }
+  }
+
+  function celebrate() {
+    playChime();
+    launchConfetti();
+    speak('Hooray! You found them all! Choo choo!');
+    setTimeout(playChooChoo, 600);
+    runTrain();
+  }
+
+  // The engine pulls a car for each animal, in the order they were found,
+  // across the bottom of the screen. The next round starts once it's gone.
+  function runTrain() {
+    const cars = foundOrder
+      .map(a => `<span class="car">🚃<span class="rider">${a.emoji}</span></span>`)
+      .join('');
+    train.innerHTML = `<span class="car engine">🚂</span>${cars}`;
+    train.classList.remove('hidden');
+    track.classList.add('show');
+    scene.classList.add('boarded');
+
+    // The 🚂 emoji faces left, so the train drives right-to-left
+    const width = train.offsetWidth;
+    trainAnim = train.animate(
+      [{ transform: `translateX(${window.innerWidth}px)` }, { transform: `translateX(${-width}px)` }],
+      { duration: TRAIN_MS, easing: 'linear' }
+    );
+    trainAnim.onfinish = () => {
+      stopTrain();
+      newRound();
+    };
+  }
+
+  function stopTrain() {
+    if (trainAnim) trainAnim.cancel();
+    trainAnim = null;
+    train.classList.add('hidden');
+    track.classList.remove('show');
+  }
+
+  function launchConfetti() {
+    for (let i = 0; i < 70; i++) {
+      const bit = document.createElement('div');
+      bit.className = 'bit';
+      bit.style.left = `${Math.random() * 100}vw`;
+      bit.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+      bit.style.animationDuration = `${2 + Math.random() * 1.8}s`;
+      bit.style.animationDelay = `${Math.random() * 0.6}s`;
+      bit.style.setProperty('--dx', `${(Math.random() - 0.5) * 30}vw`);
+      bit.style.setProperty('--r', `${Math.random() * 720 - 360}deg`);
+      confetti.append(bit);
+    }
+    setTimeout(() => (confetti.innerHTML = ''), 4600);
+  }
+
+  // ---------- Sky flyers ----------
+  // Every so often an airplane or a helicopter crosses the sky lane above the
+  // scene (one at a time). Tapping one plays its trick and speeds it up.
+  // They aren't counted as found animals.
+  const FLYERS = [
+    {
+      kind: 'airplane',
+      emoji: '✈️',
+      facesRight: true,     // which way the emoji points before flipping
+      flightMs: 9000,       // time to cross the screen
+      line: 'Airplane! Zoom!',
+      sound: playWhoosh,
+      // Loop-the-loop
+      trick: [{ rotate: '0deg' }, { rotate: '-360deg' }],
+    },
+    {
+      kind: 'helicopter',
+      emoji: '🚁',
+      facesRight: false,
+      flightMs: 12000,
+      line: 'Helicopter! Whirr whirr!',
+      sound: playChop,
+      // Hop up and wobble
+      trick: [
+        { translate: '0 0', rotate: '0deg' },
+        { translate: '0 -30px', rotate: '-12deg' },
+        { translate: '0 -10px', rotate: '12deg' },
+        { translate: '0 0', rotate: '0deg' },
+      ],
+    },
+  ];
+
+  let flyerTimer = null;
+  let flight = null;      // { flyer, el, anim } while something is in the sky
+  let lastFlyer = null;
+
+  FLYERS.forEach(flyer => {
+    const el = document.createElement('button');
+    el.className = `flyer ${flyer.kind} hidden`;
+    el.setAttribute('aria-label', flyer.kind);
+    el.innerHTML = `<span class="flyer-flip"><span class="flyer-body">${flyer.emoji}</span></span>`;
+    el.addEventListener('pointerdown', e => onFlyerTap(e, flyer, el));
+    gameScreen.insertBefore(el, parentBtn);
+    flyer.el = el;
+  });
+
+  function scheduleFlyer(delay) {
+    clearTimeout(flyerTimer);
+    flyerTimer = setTimeout(launchFlyer, delay);
+  }
+
+  function pickFlyer() {
+    // Mostly switch to a different one, but sometimes repeat
+    const others = FLYERS.filter(f => f !== lastFlyer);
+    const pool = lastFlyer && Math.random() < 0.3 ? FLYERS : others;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function launchFlyer() {
+    const flyer = pickFlyer();
+    lastFlyer = flyer;
+    const el = flyer.el;
+
+    el.classList.remove('hidden');
+    const size = el.offsetWidth;
+    const maxTop = Math.max(8, scene.offsetTop - size);
+    el.style.top = `${8 + Math.random() * (maxTop - 8)}px`;
+
+    const leftToRight = Math.random() < 0.5;
+    el.querySelector('.flyer-flip').style.transform = leftToRight === flyer.facesRight ? '' : 'scaleX(-1)';
+    const from = leftToRight ? -size : window.innerWidth;
+    const to = leftToRight ? window.innerWidth : -size;
+
+    el.lastTap = 0;
+    const anim = el.animate(
+      [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }],
+      { duration: flyer.flightMs, easing: 'linear' }
+    );
+    flight = { flyer, el, anim };
+    anim.onfinish = () => {
+      el.classList.add('hidden');
+      flight = null;
+      const [min, max] = FLYER_GAP_MS;
+      scheduleFlyer(min + Math.random() * (max - min));
+    };
+  }
+
+  function stopFlyers() {
+    clearTimeout(flyerTimer);
+    if (flight) flight.anim.cancel();
+    flight = null;
+    FLYERS.forEach(f => f.el.classList.add('hidden'));
+  }
+
+  function onFlyerTap(e, flyer, el) {
+    e.preventDefault();
+    if (!e.isPrimary || !flight || flight.el !== el || celebrating) return;
+
+    const now = performance.now();
+    if (now - (el.lastTap || 0) < TAP_COOLDOWN_MS) return;
+    el.lastTap = now;
+
+    flyer.sound();
+    speak(flyer.line);
+    el.querySelector('.flyer-body').animate(flyer.trick, { duration: 900, easing: 'ease-in-out' });
+    flight.anim.playbackRate = Math.min(flight.anim.playbackRate * 1.6, 3);
+  }
+
+  // ---------- Screens ----------
+  function startGame() {
+    initAudio();
+    speak('Alex’s Farm!');
+    startScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+    newRound();
+    scheduleFlyer(FLYER_FIRST_MS);
+  }
+
+  function backToStart() {
+    clearTimeout(roundTimer);
+    stopFlyers();
+    stopTrain();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    confetti.innerHTML = '';
+    gameScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+  }
+
+  document.getElementById('play').addEventListener('click', startGame);
+
+  // Parent gate: hold the corner button for 3 seconds
+  let holdTimer = null;
+  function endHold() {
+    clearTimeout(holdTimer);
+    parentBtn.classList.remove('holding');
+  }
+  parentBtn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    parentBtn.classList.add('holding');
+    holdTimer = setTimeout(() => {
+      endHold();
+      backToStart();
+    }, PARENT_HOLD_MS);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(type => parentBtn.addEventListener(type, endHold));
+
+  // Block long-press menus, pinch zoom, and double-tap zoom
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('dblclick', e => e.preventDefault());
+</script>
+</body>
+</html>
